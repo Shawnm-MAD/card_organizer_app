@@ -1,52 +1,96 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
-class Folder {
-  int id;
-  String name;
-  String imageUrl;
-  int cardCount;
+class DatabaseHelper {
+  static final DatabaseHelper instance = DatabaseHelper._init();
+  static Database? _database;
 
-  Folder({required this.id, required this.name, required this.imageUrl, required this.cardCount});
-}
+  DatabaseHelper._init();
 
-class CardItem {
-  int id;
-  String name;
-  String suit;
-  String imageUrl;
-  int folderId;
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('cards.db');
+    return _database!;
+  }
 
-  CardItem({required this.id, required this.name, required this.suit, required this.imageUrl, required this.folderId});
-}
+  Future<Database> _initDB(String path) async {
+    final dbPath = await getDatabasesPath();
+    final dbLocation = join(dbPath, path);
+    return await openDatabase(dbLocation, version: 1, onCreate: _onCreate);
+  }
 
-Future<Database> initDatabase() async {
-  var dbPath = await getDatabasesPath();
-  String path = join(dbPath, 'cards.db');
-  
-  return openDatabase(path, onCreate: (db, version) async {
+  Future _onCreate(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE Folders(
+      CREATE TABLE folders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        imageUrl TEXT,
-        timestamp TEXT
-      )
+        name TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     ''');
+
     await db.execute('''
-      CREATE TABLE Cards(
+      CREATE TABLE cards(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        suit TEXT,
-        imageUrl TEXT,
-        folderId INTEGER,
-        FOREIGN KEY (folderId) REFERENCES Folders(id)
-      )
+        name TEXT NOT NULL,
+        suit TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        folder_id INTEGER NOT NULL,
+        FOREIGN KEY (folder_id) REFERENCES folders(id)
+      );
     ''');
-    // Prepopulate the Folders table
-    await db.insert('Folders', {'name': 'Hearts', 'imageUrl': 'hearts.png'});
-    await db.insert('Folders', {'name': 'Spades', 'imageUrl': 'spades.png'});
-    await db.insert('Folders', {'name': 'Diamonds', 'imageUrl': 'diamonds.png'});
-    await db.insert('Folders', {'name': 'Clubs', 'imageUrl': 'clubs.png'});
-  }, version: 1);
+
+    // Prepopulate folder data (Hearts, Spades, Diamonds, Clubs)
+    await db.insert('folders', {'name': 'Hearts'});
+    await db.insert('folders', {'name': 'Spades'});
+    await db.insert('folders', {'name': 'Diamonds'});
+    await db.insert('folders', {'name': 'Clubs'});
+
+    // Prepopulate cards (for simplicity, only a few cards here)
+    for (var suit in ['hearts', 'spades', 'diamonds', 'clubs']) {
+      for (var i = 1; i <= 13; i++) {
+        String cardName = '${i}_of_$suit';
+        String imageUrl = 'assets/images/${cardName.toLowerCase().replaceAll(' ', '_')}.png';
+        await db.insert('cards', {
+          'name': cardName,
+          'suit': suit,
+          'image_url': imageUrl,
+          'folder_id': (suit == 'hearts') ? 1 : (suit == 'spades') ? 2 : (suit == 'diamonds') ? 3 : 4,
+        });
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getFolders() async {
+    final db = await instance.database;
+    return await db.query('folders');
+  }
+
+  Future<List<Map<String, dynamic>>> getCards(int folderId) async {
+    final db = await instance.database;
+    return await db.query('cards', where: 'folder_id = ?', whereArgs: [folderId]);
+  }
+
+  Future<int> addCard(Map<String, dynamic> card) async {
+    final db = await instance.database;
+    final folderId = card['folder_id'];
+    final cardCount = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT COUNT(*) FROM cards WHERE folder_id = ?', [folderId]));
+
+    if (cardCount != null && cardCount >= 6) {
+      throw Exception('This folder can only hold 6 cards.');
+    }
+
+    return await db.insert('cards', card);
+  }
+
+  Future<int> deleteCard(int cardId) async {
+    final db = await instance.database;
+    return await db.delete('cards', where: 'id = ?', whereArgs: [cardId]);
+  }
+
+  Future<int> deleteFolder(int folderId) async {
+    final db = await instance.database;
+    await db.delete('cards', where: 'folder_id = ?', whereArgs: [folderId]);
+    return await db.delete('folders', where: 'id = ?', whereArgs: [folderId]);
+  }
 }
