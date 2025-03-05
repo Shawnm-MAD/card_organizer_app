@@ -49,12 +49,20 @@ class DatabaseHelper {
     for (var suit in ['hearts', 'spades', 'diamonds', 'clubs']) {
       for (var i = 1; i <= 13; i++) {
         String cardName = '${i}_of_$suit';
-        String imageUrl = 'assets/images/${cardName.toLowerCase().replaceAll(' ', '_')}.png';
+        String imageUrl =
+            'assets/images/${cardName.toLowerCase().replaceAll(' ', '_')}.png';
         await db.insert('cards', {
           'name': cardName,
           'suit': suit,
           'image_url': imageUrl,
-          'folder_id': (suit == 'hearts') ? 1 : (suit == 'spades') ? 2 : (suit == 'diamonds') ? 3 : 4,
+          'folder_id':
+              (suit == 'hearts')
+                  ? 1
+                  : (suit == 'spades')
+                  ? 2
+                  : (suit == 'diamonds')
+                  ? 3
+                  : 4,
         });
       }
     }
@@ -67,14 +75,21 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getCards(int folderId) async {
     final db = await instance.database;
-    return await db.query('cards', where: 'folder_id = ?', whereArgs: [folderId]);
+    return await db.query(
+      'cards',
+      where: 'folder_id = ?',
+      whereArgs: [folderId],
+    );
   }
 
   Future<int> addCard(Map<String, dynamic> card) async {
     final db = await instance.database;
     final folderId = card['folder_id'];
-    final cardCount = Sqflite.firstIntValue(await db.rawQuery(
-        'SELECT COUNT(*) FROM cards WHERE folder_id = ?', [folderId]));
+    final cardCount = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM cards WHERE folder_id = ?', [
+        folderId,
+      ]),
+    );
 
     if (cardCount != null && cardCount >= 6) {
       throw Exception('This folder can only hold 6 cards.');
